@@ -11,8 +11,6 @@ targets:
 dependencies:
   amqp-client:
     github: cloudamqp/amqp-client.cr
-  crystar:
-    github: naqvis/crystar
 
 crystal: 0.33.0
 
