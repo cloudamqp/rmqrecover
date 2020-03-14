@@ -1,0 +1,19 @@
+name: rmqrecover
+version: 0.1.0
+
+authors:
+  - Carl Hörberg <carl@cloudamqp.com>
+
+targets:
+  rmqrecover:
+    main: src/rmqrecover.cr
+
+dependencies:
+  amqp-client:
+    github: cloudamqp/amqp-client.cr
+  crystar:
+    github: naqvis/crystar
+
+crystal: 0.33.0
+
+license: MIT
