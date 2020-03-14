@@ -133,4 +133,6 @@ when "report"
 when "republish"
   uri = ARGV.shift? || abort usage
   r.republish uri
+else
+  abort usage
 end
