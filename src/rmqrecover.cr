@@ -78,7 +78,7 @@ class RMQReader
   private def messages(path, &blk : Message -> Nil)
     message_files(path) do |file|
       File.open(file) do |f|
-        f.buffer_size = 256 * 1024
+        f.buffer_size = 1024 * 1024
         extract f, &blk
       end
     end
