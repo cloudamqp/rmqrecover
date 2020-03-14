@@ -11,7 +11,7 @@ routing key and body.
 
 ## Installation
 
-Download: [https://github.com/cloudamqp/rmqrecover/releases]
+Download: <https://github.com/cloudamqp/rmqrecover/releases>
 
 From source:
 
