@@ -2,7 +2,7 @@ require "io/hexdump"
 require "amqp-client"
 
 class RMQRecover
-  VERSION = "1.0.0"
+  VERSION = "1.0.1"
 
   record Message,
     exchange : String,
