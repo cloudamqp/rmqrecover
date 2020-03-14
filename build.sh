@@ -1,5 +1,10 @@
 #!/bin/bash -eu
 
-shards build --release --static
-strip -s bin/rmqrecover
-mv bin/rmqrecover bin/rmqrecover-$(shards version)-static-$(uname -i)
+shards build --release --production --static
+dir=rmqrecover-$(shards version)-static-$(uname -i)
+rm -rf $dir
+mkdir $dir
+cp bin/rmqrecover README.md LICENSE $dir
+strip $dir/rmqrecover
+tar -zcvf $dir.tar.gz $dir
+rm -rf $dir
