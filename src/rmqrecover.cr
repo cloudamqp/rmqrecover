@@ -51,11 +51,10 @@ class RMQReader
       f = File.join path, c
       if c == ".vhost"
         yield File.read(f), path
-      else
+      elsif File.directory? f
         vhosts(f, &blk)
       end
     end
-  rescue Errno
   end
 
   # recursivly find files with extension 'idx' or 'rdq'
@@ -65,11 +64,10 @@ class RMQReader
       f = File.join(path, c)
       if c.ends_with?(".idx") || c.ends_with?(".rdq")
         yield f
-      else
+      elsif File.directory? f
         message_files f, &blk
       end
     end
-  rescue Errno
   end
 
   # recurisvly extract all messages from a directory
