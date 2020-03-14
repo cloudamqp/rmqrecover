@@ -32,6 +32,8 @@ class RMQReader
         puts "Republished #{i} messages to vhost #{vhost}"
       end
     end
+  rescue ex
+    abort ex.message
   end
 
   def report
@@ -42,6 +44,8 @@ class RMQReader
       end
       puts "Found #{i} messages in vhost #{vhost}"
     end
+  rescue ex
+    abort ex.message
   end
 
   # finds vhost directories in a directy
