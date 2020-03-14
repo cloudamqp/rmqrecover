@@ -15,16 +15,17 @@ class RMQRecover
   def initialize(@root : String)
   end
 
-  def republish(uri)
+  def republish(uri_str)
+    uri = URI.parse(uri_str)
+    props = AMQP::Client::Properties.new delivery_mode: 2_u8
     vhosts(@root) do |vhost, vhost_path|
       i = 0
       begin
-        u = URI.parse(uri)
-        u.path = URI.encode_www_form(vhost)
-        AMQP::Client.start(u.to_s) do |amqp|
+        uri.path = "/#{URI.encode_www_form(vhost)}"
+        AMQP::Client.start(uri) do |amqp|
           ch = amqp.channel
           messages(vhost_path) do |msg|
-            ch.basic_publish msg.body, msg.exchange, msg.routing_key
+            ch.basic_publish msg.body, msg.exchange, msg.routing_key, props: props
             i += 1
           end
         end
