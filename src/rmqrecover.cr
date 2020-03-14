@@ -96,6 +96,7 @@ class RMQReader
       skip_until(io, MESSAGE)
       body_len = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
       IO.copy io, body, body_len
+      body.rewind
       yield Message.new(exchange, rk, body)
     rescue IO::EOFError
       break
