@@ -126,18 +126,18 @@ class RMQRecover
   end
 end
 
-usage = "Usage: #{PROGRAM_NAME} DIRECTORY [ report | republish URI ]"
+USAGE = "Usage: #{PROGRAM_NAME} DIRECTORY [ report | republish URI ]"
 
-path = ARGV.shift? || abort usage
-mode = ARGV.shift? || abort usage
+path = ARGV.shift? || abort USAGE
+mode = ARGV.shift? || abort USAGE
 
 r = RMQRecover.new(path)
 case mode
 when "report"
   r.report
 when "republish"
-  uri = ARGV.shift? || abort usage
+  uri = ARGV.shift? || abort USAGE
   r.republish uri
 else
-  abort usage
+  abort USAGE
 end
