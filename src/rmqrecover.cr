@@ -1,7 +1,7 @@
 require "io/hexdump"
 require "amqp-client"
 
-class RMQReader
+class RMQRecover
   VERSION = "1.0.0"
 
   record Message,
@@ -130,7 +130,7 @@ usage = "Usage: #{PROGRAM_NAME} DIRECTORY [ report | republish URI ]"
 path = ARGV.shift? || abort usage
 mode = ARGV.shift? || abort usage
 
-r = RMQReader.new(path)
+r = RMQRecover.new(path)
 case mode
 when "report"
   r.report
