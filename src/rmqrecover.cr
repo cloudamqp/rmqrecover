@@ -35,7 +35,11 @@ class RMQRecover
       end
     end
   rescue ex
-    abort ex.message
+    {% if flag?(:release) %}
+      abort ex.message
+    {% else %}
+      raise ex
+    {% end %}
   end
 
   def report
@@ -46,6 +50,12 @@ class RMQRecover
       end
       puts "Found #{i} messages in vhost #{vhost}"
     end
+  rescue ex
+    {% if flag?(:release) %}
+      abort ex.message
+    {% else %}
+      raise ex
+    {% end %}
   end
 
   # finds vhost directories in a directy
@@ -79,9 +89,11 @@ class RMQRecover
     message_files(path) do |file|
       File.open(file) do |f|
         f.buffer_size = 1024 * 1024
-        STDERR.puts "Extracting from #{file}"
-        hex = IO::Hexdump.new(f, read: true)
-        extract hex, File.extname(file), &blk
+        {% unless flag?(:release) %}
+        STDERR.puts file
+        f = IO::Hexdump.new(f, read: true)
+        {% end %}
+        extract f, File.extname(file), &blk
       end
     end
   end
