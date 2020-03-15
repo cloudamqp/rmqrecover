@@ -215,6 +215,14 @@ class RMQRecover
       yield Message.new(exchange, rk, p, body)
     rescue IO::EOFError
       break
+    rescue ex
+      io.seek -16, IO::Seek::Current
+      hexdump = IO::Hexdump.new(io, read: true)
+      begin
+        hexdump.skip 32
+      rescue IO::EOFError
+      end
+      raise ex
     ensure
       body.clear
     end
