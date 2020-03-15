@@ -18,7 +18,6 @@ class RMQRecover
 
   def republish(uri_str)
     uri = URI.parse(uri_str)
-    props = AMQP::Client::Properties.new delivery_mode: 2_u8
     vhosts(@root) do |vhost, vhost_path|
       i = 0
       begin
@@ -26,7 +25,7 @@ class RMQRecover
         AMQP::Client.start(uri) do |amqp|
           ch = amqp.channel
           messages(vhost_path) do |msg|
-            ch.basic_publish msg.body, msg.exchange, msg.routing_key, props: props
+            ch.basic_publish msg.body, msg.exchange, msg.routing_key, props: msg.properties
             i += 1
           end
         end
@@ -136,7 +135,7 @@ class RMQRecover
       value(io) # "content"
       value(io) # 0x3c (60) some small int?
 
-      p = AMQP::Client::Properties.new
+      p = AMQP::Client::Properties.new delivery_mode: 2_u8
 
       if value(io) == "none" # none, properties?
         value(io) # garbage string?
