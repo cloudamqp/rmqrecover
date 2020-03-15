@@ -107,11 +107,11 @@ class RMQRecover
     loop do
       case ext
       when ".idx"
-        io.skip 37 # in idx files
+        skip_until(io, UInt8.static_array(0x68, 0x06))
       when ".rdq"
         io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0x00000000
         size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
-        io.skip 18 # ?
+        io.skip 19 # ?
       end
 
       value(io) # basic_message
@@ -125,69 +125,77 @@ class RMQRecover
       exchange = value(io).as(String)
 
       io.read_byte # 0x6c (list)
-      _ = io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0001 list items
+      io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0001 list items
 
       rk = value(io).as(String)
       value(io) # nil
+
+      io.read_byte # 0x68 list
+      io.read_byte # 0x06 list length
+
       value(io) # "content"
       value(io) # 0x3c (60) some small int?
 
-      io.read_byte # 0x68 small tuple
-      io.read_byte # 0x0f small tuple items
-
-      value(io) # "P_basic"
-
       p = AMQP::Client::Properties.new
 
-      p.content_type = value(io).as?(String)
-      p.content_encoding = value(io).as?(String)
+      if value(io) == "none" # none, properties?
+        value(io) # garbage string?
+        value(io) # "rabbitmq_framing_amqp_0_9_1"
+      else
+        value(io) # "P_basic"
 
-      # headers
-      case io.read_byte
-      when 0x6a # empty table
-        io.skip 2 # 0x61 0x02
-      when 0x6c # table
-        headers_len = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+        p.content_type = value(io).as?(String)
+        p.content_encoding = value(io).as?(String)
 
-        headers = AMQ::Protocol::Table.new
-        headers_len.times do
-          io.read_byte # 0x68 small tuple
-          io.read_byte # 0x03 tuple items
+        # headers
+        case io.read_byte
+        when 0x6a
+          nil # empty table
+        when 0x6c # table
+          headers_len = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
 
-          key = value(io).as(String)
-          value_type = value(io).as(String)
+          headers = AMQ::Protocol::Table.new
+          headers_len.times do
+            io.read_byte # 0x68 small tuple
+            io.read_byte # 0x03 tuple items
 
-          value =
-            case value_type
-            when "bool"
-              io.read_string(io.read_bytes Int16, IO::ByteFormat::NetworkEndian) == "true"
-            when "long"
-              io.skip 2
-              io.read_bytes Int16, IO::ByteFormat::NetworkEndian
-            when "longstr"
-              io.read_string(io.read_bytes Int32, IO::ByteFormat::NetworkEndian)
-            end
+            key = value(io).as(String)
+            value_type = value(io).as(String)
+
+            value =
+              case value_type
+              when "bool"
+                io.read_string(io.read_bytes Int16, IO::ByteFormat::NetworkEndian) == "true"
+              when "long"
+                value(io)
+              when "longstr"
+                value(io).as(String)
+              end
+          end
+          value(io) # nil, tail
+          p.headers = headers
         end
-        p.headers = headers
-      end
 
-      if priority = value(io).as?(Int)
-        p.priority = priority > UInt8::MAX ? UInt8::MAX : priority.to_u8
-      end
+        delivery_mode = value(io).as(UInt8)
 
-      p.correlation_id = value(io).as?(String)
-      p.reply_to = value(io).as?(String)
-      p.expiration = value(io).as?(String)
-      p.message_id = value(io).as?(String)
-      if timestamp = value(io).as?(Int)
-        p.timestamp = Time.unix timestamp
+        if priority = value(io).as?(Int)
+          p.priority = priority > UInt8::MAX ? UInt8::MAX : priority.to_u8
+        end
+
+        p.correlation_id = value(io).as?(String)
+        p.reply_to = value(io).as?(String)
+        p.expiration = value(io).as?(String)
+        p.message_id = value(io).as?(String)
+        if timestamp = value(io).as?(Int)
+          p.timestamp = Time.unix timestamp
+        end
+        p.type = value(io).as?(String)
+        p.user_id = value(io).as?(String)
+        p.app_id = value(io).as?(String)
+        value(io) # reserved1/cluster_id
+        value(io) # none?
+        value(io) # none?
       end
-      p.type = value(io).as?(String)
-      p.user_id = value(io).as?(String)
-      p.app_id = value(io).as?(String)
-      value(io) # reserved1/cluster_id
-      value(io) # none?
-      value(io) # none?
 
       io.read_byte # 0x6c list
       io.skip 4 # 0x00000001 list items
@@ -223,8 +231,10 @@ class RMQRecover
     when 0x64 # short string
       v = io.read_string(io.read_bytes Int16, IO::ByteFormat::NetworkEndian)
       v == "undefined" ? nil : v
+    when 0x68 # small tuple
+      size = io.read_byte || raise IO::EOFError.new # items
+      Array.new(size, nil)
     when 0x6a # nil
-      io.skip 2 # 0x61 0x02
       nil
     when 0x6d # long string
       io.read_string(io.read_bytes Int32, IO::ByteFormat::NetworkEndian)
