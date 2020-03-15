@@ -88,9 +88,9 @@ class RMQRecover
     message_files(path) do |file|
       File.open(file) do |f|
         f.buffer_size = 1024 * 1024
-        {% unless flag?(:release) %}
-        STDERR.puts file
-        f = IO::Hexdump.new(f, read: true)
+        {% if flag?(:verbose) %}
+          STDERR.puts file
+          f = IO::Hexdump.new(f, read: true)
         {% end %}
         extract f, File.extname(file), &blk
       end
