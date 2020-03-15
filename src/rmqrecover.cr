@@ -245,6 +245,8 @@ class RMQRecover
       nil
     when 0x6d # long string
       io.read_string(io.read_bytes Int32, IO::ByteFormat::NetworkEndian)
+    when nil
+      raise IO::EOFError.new
     else raise "Unknown data type #{type}"
     end
   end
