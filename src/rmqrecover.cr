@@ -193,12 +193,14 @@ class RMQRecover
       value(io) # none/garbage
       value(io) # none/"rabbitmq_framing_amqp_0_9_1"
 
-      io.read_byte || raise IO::EOFError.new # 0x6c list
-      io.skip 4 # 0x00000001 list items
+      expect(io, 0x6c) # array
+      body_parts = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
 
-      io.read_byte || raise IO::EOFError.new # 0x6d long string
-      body_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
-      IO.copy io, body, body_size
+      body_parts.times do
+        expect(io, 0x6d) # long string
+        body_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+        IO.copy io, body, body_size
+      end
       body.rewind
       yield Message.new(exchange, rk, p, body)
 
@@ -276,6 +278,12 @@ class RMQRecover
     key = value(io).as(String)
     value = typed_value(io)
     { key, value }
+  end
+
+  private def expect(io : IO, expected : UInt8) : UInt8
+    b = io.read_byte || raise IO::EOFError.new
+    b == expected || raise "Expected '%x', got '%x'" % { expected, b }
+    b
   end
 
   # searches in a byte stream for a match, one byte at a time
