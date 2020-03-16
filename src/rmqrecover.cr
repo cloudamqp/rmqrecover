@@ -228,7 +228,9 @@ class RMQRecover
   private def value(io) : AMQ::Protocol::Field
     type = io.read_byte || raise IO::EOFError.new
     case type
-    when 0x61
+    when 0x46 # float
+     io.read_bytes Float64, IO::ByteFormat::NetworkEndian
+    when 0x61 # UInt8
       io.read_byte || raise IO::EOFError.new # uint8
     when 0x62 # int32
      io.read_bytes Int32, IO::ByteFormat::NetworkEndian
@@ -259,6 +261,8 @@ class RMQRecover
     when "bool"
       value(io).as(String) == "true"
     when "long"
+      value(io)
+    when "double"
       value(io)
     when "longstr"
       value(io).as(String)
