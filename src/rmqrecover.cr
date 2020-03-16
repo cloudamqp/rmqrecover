@@ -194,18 +194,22 @@ class RMQRecover
       value(io) # none/garbage
       value(io) # none/"rabbitmq_framing_amqp_0_9_1"
 
-      expect(io, 0x6c) # array
-      body_parts = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
-
-      body_parts.times do
-        expect(io, 0x6d) # long string
-        body_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
-        IO.copy io, body, body_size
+      body_type = io.read_byte || raise IO::EOFError.new
+      case body_type
+      when 0x6c # array
+        body_parts = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+        body_parts.times do
+          expect(io, 0x6d) # long string
+          body_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+          IO.copy io, body, body_size
+        end
+        expect(io, 0x6a) # nil, tail of list
+        body.rewind
+      when 0x6a
+        nil
+      else raise "Unexpected body type %x" % body_type
       end
-      body.rewind
       yield Message.new(exchange, rk, p, body)
-
-      expect(io, 0x6a) # nil, tail of list
 
       value(io) # garbage?
       value(io) # true
