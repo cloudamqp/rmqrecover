@@ -116,26 +116,26 @@ class RMQRecover
         io.skip 19 # ?
       end
 
-      value(io) # basic_message
+      value(io).as(String) == "basic_message" || raise "Expected 'basic_message'"
 
-      io.read_byte || raise IO::EOFError.new # 0x68 small tuple
-      io.read_byte || raise IO::EOFError.new # 0x04 small tuple items
+      expect(io, 0x68) # tuple
+      expect(io, 0x04) # tuple size
 
-      value(io) # "resource"
-      vhost = value(io)
-      value(io) # "exchange"
+      value(io).as(String) == "resource" || raise "Expected 'resource'"
+      vhost = value(io).as(String)
+      value(io).as(String) == "exchange" || raise "Expected 'exchange'"
       exchange = value(io).as(String)
 
-      io.read_byte || raise IO::EOFError.new # 0x6c (list)
-      io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0001 list items
-
+      expect(io, 0x6c) # array
+      rk_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0001 array size
+      rk_size == 1 || raise "Expected routing key array to have 1 element but had #{rk_size}"
       rk = value(io).as(String)
-      value(io) # nil
+      expect(io, 0x6a) # nil, tail of array
 
-      io.read_byte || IO::EOFError.new # 0x68 list
-      io.read_byte || IO::EOFError.new# 0x06 list length
+      expect(io, 0x68) # tuple
+      expect(io, 0x06) # tuple size
 
-      value(io) # "content"
+      value(io).as(String) == "content" || raise "Expected 'content'"
       value(io) # 0x3c (60) some small int?
 
       p = AMQP::Client::Properties.new delivery_mode: 2_u8
@@ -147,9 +147,9 @@ class RMQRecover
         str = io.read_string(io.read_bytes Int16, IO::ByteFormat::NetworkEndian)
         raise "Unknown properties '#{str}'" unless str == "none"
       when 0x68 # when properties is a tuple
-        io.read_byte || IO::EOFError.new # 0x06 list length
+        expect(io, 0x0f) # length of tuple
 
-        value(io) # "P_basic"
+        value(io).as(String) == "P_basic" || raise "Expected 'P_basic'"
 
         p.content_type = value(io).as?(String)
         p.content_encoding = value(io).as?(String)
@@ -157,18 +157,18 @@ class RMQRecover
         header_type = io.read_byte || raise IO::EOFError.new
         p.headers =
           case header_type
-          when 0x6a
-            nil # empty table
-          when 0x6c # table
+          when 0x6a # nil
+            nil
+          when 0x6c # long array
+            size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
             AMQ::Protocol::Table.new.tap do |h|
-              size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
               size.times do
                 key, value = typed_key_value(io)
                 h[key] = value
               end
-              value(io) # nil, tail
+              expect(io, 0x6a) # nil, tail of list
             end
-          else raise "Unexpected header type '#{header_type}'"
+          else raise "Unexpected header type '%x'" % header_type
           end
 
         p.delivery_mode = value(io).as(UInt8)
@@ -188,6 +188,7 @@ class RMQRecover
         p.user_id = value(io).as?(String)
         p.app_id = value(io).as?(String)
         p.reserved1 = value(io).as?(String)
+      else raise "Unexpected property byte %x" % prop_type
       end
 
       value(io) # none/garbage
@@ -204,13 +205,13 @@ class RMQRecover
       body.rewind
       yield Message.new(exchange, rk, p, body)
 
-      value(io).as(Nil) # 0x6a nil list tail
+      expect(io, 0x6a) # nil, tail of list
 
       value(io) # garbage?
       value(io) # true
       case ext
       when ".rdq"
-        io.read_byte || raise IO::EOFError.new # 0xff
+        expect(io, 0xff) # delimiter
       end
     rescue IO::EOFError
       break
@@ -243,7 +244,7 @@ class RMQRecover
         v += (d.to_i64 * (256_i64**i))
       end
       sign.zero? ? v : -v
-    else raise "Unknown data type #{type}"
+    else raise "Unknown data type %x" % type
     end
   end
 
@@ -258,22 +259,22 @@ class RMQRecover
     when "longstr"
       value(io).as(String)
     when "array"
-      io.read_byte || raise IO::EOFError.new # 0x6c long array
+      expect(io, 0x6c) # long array
       size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
       a = Array(AMQ::Protocol::Field).new(size) do
         io.read_byte || raise IO::EOFError.new # 0x68 small tuple
         io.read_byte || raise IO::EOFError.new # 0x02 tuple items
         typed_value(io)
       end
-      value(io).as(Nil) # nil, tail
+      expect(io, 0x6a) # nil, tail of list
       a
-    else raise "Unknown header type '#{value_type}'"
+    else raise "Unknown header type '%x'" % value_type
     end
   end
 
   private def typed_key_value(io)
-    io.read_byte || raise IO::EOFError.new # 0x68 small tuple
-    io.read_byte || raise IO::EOFError.new # 0x03 tuple items
+    expect(io, 0x68) # small tuple
+    expect(io, 0x03) # tuple size
 
     key = value(io).as(String)
     value = typed_value(io)
