@@ -26,7 +26,13 @@ shards build --release
 ## Usage
 
 ```
-Usage: rmqrecover DIRECTORY [ report | republish URI ]
+Usage: rmqrecover [ arguments ]
+  -D DIR, --directory=DIR          mnesia directory to scan
+  -m MODE, --mode=MODE             report (default) or republish
+  -u NAME, --uri=URI               AMQP URI to republish to
+  -v, --verbose                    Hexdump while reading
+  --version                        Show version
+  -h, --help                       Show this help
 ```
 
 ## Contributing
