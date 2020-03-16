@@ -1,3 +1,4 @@
+require "option_parser"
 require "io/hexdump"
 require "amqp-client"
 
@@ -13,7 +14,7 @@ class RMQRecover
   EXCHANGE = "exchange"
   MESSAGE = UInt8.static_array(0x6c, 0x00, 0x00, 0x00, 0x01, 0x6d)
 
-  def initialize(@root : String)
+  def initialize(@root : String, @hexdump = false)
   end
 
   def republish(uri_str)
@@ -88,11 +89,13 @@ class RMQRecover
     message_files(path) do |file|
       File.open(file) do |f|
         f.buffer_size = 1024 * 1024
-        {% if flag?(:verbose) %}
+        if @hexdump
           STDERR.puts file
-          f = IO::Hexdump.new(f, read: true)
-        {% end %}
-        extract f, File.extname(file), &blk
+          io = IO::Hexdump.new(f, read: true)
+          extract io, File.extname(file), &blk
+        else
+          extract f, File.extname(file), &blk
+        end
       rescue ex
         STDERR.puts "#{file}:#{f.pos}"
         raise ex
@@ -262,18 +265,34 @@ class RMQRecover
   end
 end
 
-USAGE = "Usage: #{PROGRAM_NAME} DIRECTORY [ report | republish URI ]"
+path = ""
+mode = "report"
+uri = ""
+hexdump = false
 
-path = ARGV.shift? || abort USAGE
-mode = ARGV.shift? || abort USAGE
+parser = OptionParser.parse do |parser|
+  parser.banner = "Usage: #{File.basename PROGRAM_NAME} [ arguments ]"
+  parser.on("-D DIR", "--directory=DIR", "mnesia directory to scan") { |v| path = v }
+  parser.on("-m MODE", "--mode=MODE", "report (default) or republish") { |v| mode = v }
+  parser.on("-u NAME", "--uri=URI", "AMQP URI to republish to") { |v| uri = v }
+  parser.on("-v", "--verbose", "Hexdump while reading") { hexdump = true }
+  parser.on("--version", "Show version") { puts RMQRecover::VERSION; exit }
+  parser.on("-h", "--help", "Show this help") { puts parser; exit }
+  parser.invalid_option do |flag|
+    STDERR.puts "ERROR: #{flag} is not a valid option."
+    abort parser
+  end
+end
 
-r = RMQRecover.new(path)
+MODES = { "report", "republish" }
+abort "ERROR: invalid mode" unless MODES.includes? mode
+abort "ERROR: missing --directory argument" if path.empty?
+
+r = RMQRecover.new(path, hexdump)
 case mode
 when "report"
   r.report
 when "republish"
-  uri = ARGV.shift? || abort USAGE
+  abort "ERROR: missing --uri argument" if uri.empty?
   r.republish uri
-else
-  abort USAGE
 end
