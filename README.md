@@ -2,12 +2,14 @@
 
 Recovers messages from a RabbitMQ mnesia directory.
 It can both report number of messages in all files in a mnesia directory,
-but can also republish them to a new cluster.
+but can also republish them to a new cluster. It extracts vhost, exchange,
+routing key, properties (including headers) and the body.
 
 ## Known issues
 
-It cannot yet extract message properties or headers, only vhost, exchange,
-routing key and body.
+By default RabbitMQ embeds messages smaller than 4KB into the queue index.
+A message that is enqueued in multiple queues are therefor reported/
+republished multiple times. If you republish you can end up with duplicates.
 
 ## Installation
 
