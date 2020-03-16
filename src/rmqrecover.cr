@@ -43,7 +43,6 @@ class RMQRecover
     vhosts(@root) do |vhost, vhost_path|
       i = 0
       messages(vhost_path) do |msg|
-        pp msg.properties
         i += 1
       end
       puts "Found #{i} messages in vhost #{vhost}"
@@ -155,22 +154,20 @@ class RMQRecover
         p.content_type = value(io).as?(String)
         p.content_encoding = value(io).as?(String)
 
-        # headers
         header_type = io.read_byte || raise IO::EOFError.new
         p.headers =
           case header_type
           when 0x6a
             nil # empty table
           when 0x6c # table
-            headers_len = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
-
-            headers = AMQ::Protocol::Table.new
-            headers_len.times do
-              key, value = typed_key_value(io)
-              headers[key] = value
+            AMQ::Protocol::Table.new.tap do |h|
+              size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+              size.times do
+                key, value = typed_key_value(io)
+                h[key] = value
+              end
+              value(io) # nil, tail
             end
-            value(io) # nil, tail
-            headers
           else raise "Unexpected header type '#{header_type}'"
           end
 
@@ -198,17 +195,17 @@ class RMQRecover
 
       io.read_byte || raise IO::EOFError.new # 0x6c list
       io.skip 4 # 0x00000001 list items
-      io.read_byte || raise IO::EOFError.new # 0x6d long string
-      body_len = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
-      IO.copy io, body, body_len
-      body.rewind
-      value(io).as(Nil) # 0x6a nil list tail
 
+      io.read_byte || raise IO::EOFError.new # 0x6d long string
+      body_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+      IO.copy io, body, body_size
+      body.rewind
       yield Message.new(exchange, rk, p, body)
+
+      value(io).as(Nil) # 0x6a nil list tail
 
       value(io) # garbage?
       value(io) # true
-
       case ext
       when ".rdq"
         io.read_byte || raise IO::EOFError.new # 0xff
