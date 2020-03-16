@@ -112,7 +112,7 @@ class RMQRecover
         skip_until(io, UInt8.static_array(0x68, 0x06))
       when ".rdq"
         io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0x00000000
-        size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+        size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
         io.skip 19 # ?
       end
 
@@ -127,7 +127,7 @@ class RMQRecover
       exchange = value(io).as(String)
 
       expect(io, 0x6c) # array
-      rk_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0001 array size
+      rk_size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian # 0001 array size
       rk_size == 1 || raise "Expected routing key array to have 1 element but had #{rk_size}"
       rk = value(io).as(String)
       expect(io, 0x6a) # nil, tail of array
@@ -144,7 +144,7 @@ class RMQRecover
       prop_type = io.read_byte || IO::EOFError.new
       case prop_type
       when 0x64 # short string
-        str = io.read_string(io.read_bytes Int16, IO::ByteFormat::NetworkEndian)
+        str = io.read_string(io.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
         raise "Unknown properties '#{str}'" unless str == "none"
       when 0x68 # when properties is a tuple
         expect(io, 0x0f) # length of tuple
@@ -160,7 +160,7 @@ class RMQRecover
           when 0x6a # nil
             nil
           when 0x6c # long array
-            size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+            size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
             AMQ::Protocol::Table.new.tap do |h|
               size.times do
                 key, value = typed_key_value(io)
@@ -197,10 +197,10 @@ class RMQRecover
       body_type = io.read_byte || raise IO::EOFError.new
       case body_type
       when 0x6c # array
-        body_parts = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+        body_parts = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
         body_parts.times do
           expect(io, 0x6d) # long string
-          body_size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+          body_size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
           IO.copy io, body, body_size
         end
         expect(io, 0x6a) # nil, tail of list
@@ -233,12 +233,12 @@ class RMQRecover
     when 0x62 # int32
      io.read_bytes Int32, IO::ByteFormat::NetworkEndian
     when 0x64 # short string
-      v = io.read_string(io.read_bytes Int16, IO::ByteFormat::NetworkEndian)
+      v = io.read_string(io.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
       v == "undefined" ? nil : v
     when 0x6a # nil
       nil
     when 0x6d # long string
-      io.read_string(io.read_bytes Int32, IO::ByteFormat::NetworkEndian)
+      io.read_string(io.read_bytes UInt32, IO::ByteFormat::NetworkEndian)
     when 0x6e # big int
       v = 0_i64
       len = io.read_byte || raise IO::EOFError.new
@@ -248,7 +248,7 @@ class RMQRecover
         v += (d.to_i64 * (256_i64**i))
       end
       sign.zero? ? v : -v
-    else raise "Unknown data type %x" % type
+    else raise "Unknown data type '0x%x'" % type
     end
   end
 
@@ -264,7 +264,7 @@ class RMQRecover
       value(io).as(String)
     when "array"
       expect(io, 0x6c) # long array
-      size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+      size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
       a = Array(AMQ::Protocol::Field).new(size) do
         expect(io, 0x68) # tuple
         expect(io, 0x02) # tuple size
@@ -274,7 +274,7 @@ class RMQRecover
       a
     when "table"
       expect(io, 0x6c) # long array
-      size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+      size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
       AMQ::Protocol::Table.new.tap do |h|
         size.times do
           key, value = typed_key_value(io)
@@ -284,7 +284,7 @@ class RMQRecover
       end
     when "timestamp"
       Time.unix value(io).as(Int32)
-    else raise "Unknown header type '#{value_type}'"
+    else raise "Unknown value type '#{value_type}'"
     end
   end
 
