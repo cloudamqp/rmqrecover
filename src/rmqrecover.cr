@@ -266,13 +266,25 @@ class RMQRecover
       expect(io, 0x6c) # long array
       size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
       a = Array(AMQ::Protocol::Field).new(size) do
-        io.read_byte || raise IO::EOFError.new # 0x68 small tuple
-        io.read_byte || raise IO::EOFError.new # 0x02 tuple items
+        expect(io, 0x68) # tuple
+        expect(io, 0x02) # tuple size
         typed_value(io)
       end
       expect(io, 0x6a) # nil, tail of list
       a
-    else raise "Unknown header type '%x'" % value_type
+    when "table"
+      expect(io, 0x6c) # long array
+      size = io.read_bytes Int32, IO::ByteFormat::NetworkEndian
+      AMQ::Protocol::Table.new.tap do |h|
+        size.times do
+          key, value = typed_key_value(io)
+          h[key] = value
+        end
+        expect(io, 0x6a) # nil, tail of list
+      end
+    when "timestamp"
+      Time.unix value(io).as(Int32)
+    else raise "Unknown header type '#{value_type}'"
     end
   end
 
