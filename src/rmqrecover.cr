@@ -114,6 +114,8 @@ class RMQRecover
         io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0x00000000
         size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
         io.skip 19 # ?
+      else
+        raise "Unsupported file extension '#{ext}'"
       end
 
       value(io).as(String) == "basic_message" || raise "Expected 'basic_message'"
@@ -216,6 +218,8 @@ class RMQRecover
       case ext
       when ".rdq"
         expect(io, 0xff) # delimiter
+      else
+        # noop
       end
     rescue IO::EOFError
       break
