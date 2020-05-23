@@ -2,35 +2,37 @@ require "option_parser"
 require "io/hexdump"
 require "amqp-client"
 
+# Extract messages from RabbitMQ message and index files
 class RMQRecover
   VERSION = "1.1.2"
 
   record Message,
+    vhost : String,
     exchange : String,
     routing_key : String,
     properties : AMQP::Client::Properties,
     body : IO::Memory
 
-  def initialize(@root : String, @hexdump = false)
+  # If root is nil then read from STDIN instead
+  def initialize(@root : String?, @hexdump = false)
   end
 
   def republish(uri_str)
-    uri = URI.parse(uri_str)
-    vhosts(@root) do |vhost, vhost_path|
-      i = 0
+    amqp_connections = Hash(String, AMQP::Client::Channel).new do |h, vhost|
+      uri = URI.parse(uri_str)
+      uri.path = "/#{URI.encode_www_form(vhost)}"
+      h[vhost] = AMQP::Client.new(uri).connect.channel
+    end
+    i = 0
+    messages(@root) do |msg|
       begin
-        uri.path = "/#{URI.encode_www_form(vhost)}"
-        AMQP::Client.start(uri) do |amqp|
-          ch = amqp.channel
-          messages(vhost_path) do |msg|
-            ch.basic_publish msg.body, msg.exchange, msg.routing_key, props: msg.properties
-            i += 1
-          end
+        if ch = amqp_connections[msg.vhost]
+          ch.basic_publish msg.body, msg.exchange, msg.routing_key, props: msg.properties
+          i += 1
         end
-      ensure
-        puts "Republished #{i} messages to vhost #{vhost}"
       end
     end
+    puts "Republished #{i} messages to #{amqp_connections.size} vhosts"
   rescue ex
     {% if flag?(:release) %}
       abort ex.message
@@ -40,12 +42,12 @@ class RMQRecover
   end
 
   def report
-    vhosts(@root) do |vhost, vhost_path|
-      i = 0
-      messages(vhost_path) do |msg|
-        i += 1
-      end
-      puts "Found #{i} messages in vhost #{vhost}"
+    vhost_count = Hash(String, Int32).new(0)
+    messages(@root) do |msg|
+      vhost_count[msg.vhost] += 1
+    end
+    vhost_count.each do |vhost, count|
+      puts "Found #{count} messages in vhost #{vhost}"
     end
   rescue ex
     {% if flag?(:release) %}
@@ -53,19 +55,6 @@ class RMQRecover
     {% else %}
       raise ex
     {% end %}
-  end
-
-  # finds vhost directories in a directy
-  # yields the name of the vhost and the path to it
-  private def vhosts(path, &blk : String, String -> Nil)
-    Dir.each_child(path) do |c|
-      f = File.join path, c
-      if c == ".vhost"
-        yield File.read(f), path
-      elsif File.directory? f
-        vhosts(f, &blk)
-      end
-    end
   end
 
   # recursivly find files with extension 'idx' or 'rdq'
@@ -81,17 +70,25 @@ class RMQRecover
     end
   end
 
+  private def messages(dir : String?, &blk : Message -> Nil)
+    if dir
+      messages_from_dir(dir, &blk)
+    else
+      messages_from_io(STDIN, &blk)
+    end
+  end
+
   # recurisvly extract all messages from a directory
-  private def messages(path, &blk : Message -> Nil)
+  private def messages_from_dir(path : String, &blk : Message -> Nil)
     message_files(path) do |file|
       File.open(file) do |f|
         f.buffer_size = 1024 * 1024
         if @hexdump
           STDERR.puts file
-          io = IO::Hexdump.new(f, read: true)
-          extract io, File.extname(file), &blk
+          hex = IO::Hexdump.new(f, read: true)
+          extract hex, &blk
         else
-          extract f, File.extname(file), &blk
+          extract f, &blk
         end
       rescue ex
         STDERR.puts "#{file}:#{f.pos}"
@@ -100,23 +97,26 @@ class RMQRecover
     end
   end
 
-  # Yields messages from a rabbitmq message file
-  # currently only reads exchange, routing key and body
+  # extract all messages from files piped on STDIN (or other IO)
+  private def messages_from_io(io = STDIN, &blk : Message -> Nil)
+    io.blocking = false
+    io.buffer_size = 1024 * 1024
+    if @hexdump
+      hex = IO::Hexdump.new(io, read: true)
+      extract hex, &blk
+    else
+      extract io, &blk
+    end
+  end
+
+  # Yields messages from a rabbitmq message files
+  # both rdq and idx files
   # erlang binary format description:
   # http://erlang.org/doc/apps/erts/erl_ext_dist.html
-  private def extract(io, ext, &blk : Message -> Nil)
+  private def extract(io, &blk : Message -> Nil)
     body = IO::Memory.new
     loop do
-      case ext
-      when ".idx"
-        skip_until(io, UInt8.static_array(0x83, 0x68, 0x06))
-      when ".rdq"
-        io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0x00000000
-        size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
-        io.skip 19 # ?
-      else
-        raise "Unsupported file extension '#{ext}'"
-      end
+      skip_until(io, UInt8.static_array(0x83, 0x68, 0x06))
 
       value(io).as(String) == "basic_message" || raise "Expected 'basic_message'"
 
@@ -211,16 +211,10 @@ class RMQRecover
         nil
       else raise "Unexpected body type %x" % body_type
       end
-      yield Message.new(exchange, rk, p, body)
+      yield Message.new(vhost, exchange, rk, p, body)
 
       value(io) # garbage?
       value(io) # true
-      case ext
-      when ".rdq"
-        expect(io, 0xff) # delimiter
-      else
-        # noop
-      end
     rescue IO::EOFError
       break
     ensure
@@ -327,7 +321,7 @@ class RMQRecover
   end
 end
 
-path = ""
+path = nil
 mode = "report"
 uri = ""
 hexdump = false
@@ -348,7 +342,6 @@ end
 
 MODES = { "report", "republish" }
 abort "ERROR: invalid mode" unless MODES.includes? mode
-abort "ERROR: missing --directory argument" if path.empty?
 
 r = RMQRecover.new(path, hexdump)
 case mode
