@@ -109,7 +109,7 @@ class RMQRecover
     loop do
       case ext
       when ".idx"
-        skip_until(io, UInt8.static_array(0x68, 0x06))
+        skip_until(io, UInt8.static_array(0x83, 0x68, 0x06))
       when ".rdq"
         io.read_bytes Int32, IO::ByteFormat::NetworkEndian # 0x00000000
         size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
