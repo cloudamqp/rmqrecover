@@ -230,7 +230,7 @@ class RMQRecover
      io.read_bytes Float64, IO::ByteFormat::NetworkEndian
     when 0x61 # UInt8
       io.read_byte || raise IO::EOFError.new # uint8
-    when 0x62 # int32
+    when 0x62 # int32 or signedint
      io.read_bytes Int32, IO::ByteFormat::NetworkEndian
     when 0x64 # short string
       v = io.read_string(io.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
@@ -261,6 +261,8 @@ class RMQRecover
     when "long"
       value(io)
     when "double"
+      value(io)
+    when "signedint"
       value(io)
     when "longstr"
       value(io).as(String)
