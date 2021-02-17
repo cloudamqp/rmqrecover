@@ -116,7 +116,8 @@ class RMQRecover
   private def extract(io, &blk : Message -> Nil)
     body = IO::Memory.new
     loop do
-      skip_until(io, UInt8.static_array(0x83, 0x68, 0x06))
+      skip_until(io, UInt8.static_array(0x83, 0x68, 0x06, 0x64))
+      io.seek(-1, IO::Seek::Current) # 0x64 is the of the 'basic_message' short string, so move back one byte
 
       value(io).as(String) == "basic_message" || raise "Expected 'basic_message'"
 
