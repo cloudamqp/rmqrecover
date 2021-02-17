@@ -1,10 +1,14 @@
-version: 1.0
+version: 2.0
 shards:
   amq-protocol:
-    github: cloudamqp/amq-protocol.cr
-    version: 0.3.9
+    git: https://github.com/cloudamqp/amq-protocol.cr.git
+    version: 0.3.24
 
   amqp-client:
-    github: cloudamqp/amqp-client.cr
-    version: 0.5.18
+    git: https://github.com/cloudamqp/amqp-client.cr.git
+    version: 0.6.4
+
+  logger:
+    git: https://github.com/84codes/logger.cr.git
+    version: 1.0.0
 
