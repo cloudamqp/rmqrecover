@@ -4,7 +4,7 @@ require "amqp-client"
 
 # Extract messages from RabbitMQ message and index files
 class RMQRecover
-  VERSION = "1.1.2"
+  VERSION = "1.4.0"
 
   record Message,
     vhost : String,
