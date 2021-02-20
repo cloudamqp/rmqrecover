@@ -139,17 +139,24 @@ class RMQRecover
       expect(io, 0x06) # tuple size
 
       value(io).as(String) == "content" || raise "Expected 'content'"
-      value(io) # 0x3c (60) some small int?
+      expect(io, 0x3c) # class-id, 60
 
-      p = AMQP::Client::Properties.new delivery_mode: 2_u8
+      p : AMQP::Client::Properties
 
       # expect be small tuple or string "none"
       prop_type = io.read_byte || IO::EOFError.new
       case prop_type
       when 0x64 # short string
         str = io.read_string(io.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
-        raise "Unknown properties '#{str}'" unless str == "none"
+        str == "none" || raise "Unknown properties '#{str}'"
+
+        expect(io, 0x6d)
+        size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
+        p = AMQP::Client::Properties.from_io io, IO::ByteFormat::NetworkEndian, size
+
+        value(io) == "rabbit_framing_amqp_0_9_1" || raise "unexpected properties ending"
       when 0x68 # when properties is a tuple
+        p = AMQP::Client::Properties.new delivery_mode: 2_u8
         expect(io, 0x0f) # length of tuple
 
         value(io).as(String) == "P_basic" || raise "Expected 'P_basic'"
@@ -191,18 +198,18 @@ class RMQRecover
         p.user_id = value(io).as?(String)
         p.app_id = value(io).as?(String)
         p.reserved1 = value(io).as?(String)
+
+        value(io) == "none" || raise "unexpected properties ending"
+        value(io) == "none" || raise "unexpected properties ending"
       else raise "Unexpected property byte %x" % prop_type
       end
-
-      value(io) # none/garbage
-      value(io) # none/"rabbitmq_framing_amqp_0_9_1"
 
       body_type = io.read_byte || raise IO::EOFError.new
       case body_type
       when 0x6c # array
         body_parts = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
         body_parts.times do
-          expect(io, 0x6d) # long string
+          expect(io, 0x6d) # binary
           body_size = io.read_bytes UInt32, IO::ByteFormat::NetworkEndian
           IO.copy io, body, body_size
         end
@@ -238,7 +245,7 @@ class RMQRecover
       v == "undefined" ? nil : v
     when 0x6a # nil
       nil
-    when 0x6d # long string
+    when 0x6d # long string/binary
       io.read_string(io.read_bytes UInt32, IO::ByteFormat::NetworkEndian)
     when 0x6e # big int
       v = 0_i64
