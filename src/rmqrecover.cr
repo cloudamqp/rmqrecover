@@ -139,6 +139,7 @@ class RMQRecover
       expect(io, 0x06) # tuple size
 
       value(io).as(String) == "content" || raise "Expected 'content'"
+      expect(io, 0x61) # next value is an uint8
       expect(io, 0x3c) # class-id, 60
 
       p : AMQP::Client::Properties
